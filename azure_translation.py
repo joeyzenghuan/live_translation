@@ -4,6 +4,7 @@ import azure.cognitiveservices.speech as speechsdk  # type: ignore
 import helper
 import user_config_helper
 import socketio
+import datetime
 
 USAGE = """Usage: python captioning.py [...]
 
@@ -32,7 +33,7 @@ USAGE = """Usage: python captioning.py [...]
 """
 
 class Captioning(object):
-    def __init__(self, config=None, roomid=None):
+    def __init__(self, config=None, roomid=None, db=None):
         if config is None:
             self._user_config = user_config_helper.user_config_from_args(USAGE)
             self.socketio = False
@@ -45,6 +46,7 @@ class Captioning(object):
                 socketio_path=self._user_config["socketio"]["path"],
                 transports=["websocket"],
             )
+            self.caption_collection = db.collection("rooms").document(roomid).collection("captions")
         self._offline_results = []
 
     def translation_continuous_with_lid_from_microphone(self):
@@ -75,6 +77,10 @@ class Captioning(object):
             property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
             value="Continuous",
         )
+        translation_config.set_property(
+            property_id=speechsdk.PropertyId.SpeechServiceResponse_PostProcessingOption,
+            value="TrueText",
+        )
 
         # Specify the AutoDetectSourceLanguageConfig, which defines the number of possible languages
         auto_detect_source_language_config = (
@@ -103,6 +109,7 @@ class Captioning(object):
                 # This seems to be the only way we can get information about
                 # exceptions raised inside an event handler.
                 try:
+                    print(evt.result)
                     src_lang = evt.result.properties[
                         speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
                     ]
@@ -130,7 +137,10 @@ class Captioning(object):
 
         def result_callback(evt):
             """callback to display a translation result"""
-            if evt.result.reason == speechsdk.ResultReason.TranslatedSpeech:
+            if (
+                evt.result.reason == speechsdk.ResultReason.TranslatedSpeech
+                and len(evt.result.text) > 0
+            ):
                 src_lang = evt.result.properties[
                     speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
                 ]
@@ -147,11 +157,22 @@ class Captioning(object):
                         "Translation to {}: {}".format(key, evt.result.translations[key])
                     )
                 self._offline_results.append(evt.result)
+                timestamp = datetime.datetime.now().timestamp()
+
+                self.caption_collection.document(f"caption_{timestamp}").set(
+                    {
+                        "timestamp": timestamp,
+                        "language": src_lang,
+                        "text": evt.result.text,
+                        "translations": evt.result.translations,
+                    }
+                )
                 if self.socketio is True:
                     self.sio.emit(
                         self._user_config["serverid"],
                         {
                             "state": "recognized",
+                            "timestamp": timestamp,
                             "language": src_lang,
                             "text": evt.result.text,
                             "translations": evt.result.translations,
@@ -224,6 +245,11 @@ class Captioning(object):
             value="Continuous",
         )
 
+        transcript_config.set_property(
+            property_id=speechsdk.PropertyId.SpeechServiceResponse_PostProcessingOption,
+            value="TrueText",
+        )
+
         # Specify the AutoDetectSourceLanguageConfig, which defines the number of possible languages
         print("DETECT LANGUAGES: {}".format(self._user_config["detect_languages"]))
         auto_detect_source_language_config = (
@@ -278,7 +304,10 @@ class Captioning(object):
 
         def result_callback(evt):
             """callback to display a translation result"""
-            if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            if (
+                evt.result.reason == speechsdk.ResultReason.RecognizedSpeech
+                and len(evt.result.text) > 0
+            ):
                 src_lang = evt.result.properties[
                     speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
                 ]
@@ -291,11 +320,21 @@ class Captioning(object):
                     )
                 )
                 self._offline_results.append(evt.result)
+                timestamp = datetime.datetime.now().timestamp()
+                self.caption_collection.document(f"caption_{timestamp}").set(
+                    {
+                        "timestamp": timestamp,
+                        "language": src_lang,
+                        "text": evt.result.text,
+                        "translations": evt.result.translations,
+                    }
+                )
                 if self.socketio is True:
                     self.sio.emit(
                         self._user_config["serverid"],
                         {
                             "state": "recognized",
+                            "timestamp": timestamp,
                             "language": src_lang,
                             "text": evt.result.text,
                         },

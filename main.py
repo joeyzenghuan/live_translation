@@ -26,8 +26,8 @@ config = {
 }
 
 
-def start_captioning(roomid):
-    captioning = Captioning(config, roomid)
+def start_captioning(roomid, db):
+    captioning = Captioning(config, roomid, db)
     if len(config["target_languages"]) > 0:
         captioning.translation_continuous_with_lid_from_microphone()
     else:
@@ -44,9 +44,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--edit-room", action="store_true", help="Edit room information"
     )
+    parser.add_argument(
+        "--init", action="store_true", help="Initialize firebase caption database"
+    )
 
     args = parser.parse_args()
-    if args.roomid is None and not args.create_room:
+    if args.roomid is None and not args.create_room and not args.init:
         raise Exception(
             "Room ID is required. Create a room by --create-room or edit an existing room by --edit-room."
         )
@@ -68,7 +71,8 @@ if __name__ == "__main__":
                     "date": datetime.datetime.strptime(
                         input("Date (YYYY-MM-DD): "), "%Y-%m-%d"
                     ),
-                    "hall": input("Room Name: "),
+                    "talk": input("Talk Name: "),
+                    "hall": input("Hall Name: "),
                     "detect_lang": input("Detect Languages: ").split(","),
                     "target_lang": input("Target Languages: ").split(","),
                     "phrases": input("Phrases: ").split(","),
@@ -76,7 +80,7 @@ if __name__ == "__main__":
                     "created_at": firestore.SERVER_TIMESTAMP,
                 }
             )
-            print("Room created. Room ID: ", newroom_ref.id)
+            print("Talk room created. Room ID: ", newroom_ref.id)
             print("Please run the script again with --roomid ", newroom_ref.id)
             exit()
         except Exception as e:
@@ -100,8 +104,11 @@ if __name__ == "__main__":
                             ),
                             "%Y-%m-%d",
                         ),
+                        "talk": input(
+                            f"Talk Name [{room_data.to_dict().get('talk')}]: "
+                        ),
                         "hall": input(
-                            f"Room Name [{room_data.to_dict().get('hall')}]: "
+                            f"Hall Name [{room_data.to_dict().get('hall')}]: "
                         ),
                         "detect_lang": input(
                             f"Detect Languages [{','.join(room_data.to_dict().get('detect_lang', []))}]: "
@@ -116,7 +123,7 @@ if __name__ == "__main__":
                         "created_at": firestore.SERVER_TIMESTAMP,
                     }
                 )
-                print("Room updated.")
+                print("Talk room updated.")
                 print("Please run the script again with --roomid ", roomid)
 
                 exit()
@@ -124,7 +131,7 @@ if __name__ == "__main__":
                 print(e)
                 exit()
         else:
-            raise Exception("Room data not exist. Create a room by --create-room.")
+            raise Exception("Talk room data not exist. Create a room by --create-room.")
 
     else:
         if room_data.exists:
@@ -136,12 +143,22 @@ if __name__ == "__main__":
             print("Room Info:")
             print("  - Room ID: ", roomid)
             print("  - Event: ", room_data.to_dict().get("event"))
-            print("  - Room Name: ", room_data.to_dict().get("hall"))
+            print("  - Talk Name: ", room_data.to_dict().get("talk"))
+            print("  - Hall Name: ", room_data.to_dict().get("hall"))
             print("  - Detect Languages: ", config["detect_languages"])
             print("  - Target Languages: ", config["target_languages"])
             print("  - Phrases: ", config["phrases"])
+            print("Launch client at ", f"{os.environ.get('CLIENT_URL')}/?room={roomid}")
+            
         else:
-            raise Exception("Room data not exist. Create a room by --create-room.")
+            raise Exception("Talk room data not exist. Create a talk room by --create-room.")
 
-    thread = threading.Thread(target=start_captioning, args=(roomid,))
+    if args.init:
+        # Initialize firebase caption database
+        captions = roomdata_ref.collection("captions").list_documents()
+        for caption in captions:
+            caption.delete()
+        
+        print("Firebase caption database initialized.")
+    thread = threading.Thread(target=start_captioning, args=(roomid, db))
     thread.start()
