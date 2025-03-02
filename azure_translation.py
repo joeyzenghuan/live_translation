@@ -109,7 +109,6 @@ class Captioning(object):
                 # This seems to be the only way we can get information about
                 # exceptions raised inside an event handler.
                 try:
-                    print(evt.result)
                     src_lang = evt.result.properties[
                         speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
                     ]
