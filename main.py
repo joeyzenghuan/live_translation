@@ -18,7 +18,7 @@ config = {
     "target_languages": ["zh-Hant", "en", "ja"],
     "captioning_mode": user_config_helper.CaptioningMode.REALTIME,
     "phrases": [],
-    "socketio": {"endpoint": "http://127.0.0.1:3000", "path": "/socket.io"},
+    "socketio": {"endpoint": "http://127.0.0.1:3002", "path": "/socket.io"},
     "roomid": roomid,    
 }
 
@@ -98,4 +98,4 @@ if __name__ == '__main__':
     thread.start()
 
     if not args.disable_server:
-        socketio.run(app, host="0.0.0.0", port=3000)
+        socketio.run(app, host="0.0.0.0", port=3002)
